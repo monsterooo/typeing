@@ -65,6 +65,12 @@ impl Text {
         &self.text
     }
 
+    /// 为文本添加模糊样式
+    pub fn with_faint(&mut self) -> Self {
+        self.raw_text = format!("{}{}{}", style::Faint, self.raw_text, style::NoFaint);
+        self
+    }
+
     /// 给文本添加下划线
     pub fn with_underline(mut self) -> Self {
         self.raw_text = format!("{}{}{}", style::Underline, self.raw_text, style::Reset);
@@ -305,5 +311,60 @@ impl TypeingTui {
         self.flush()?;
 
         Ok(())
+    }
+
+    pub fn display_words(&mut self, words: &[String]) -> MaybeError<Vec<Text>> {
+        self.reset();
+        // 当前行的单词长度
+        let mut current_len = 0;
+        let mut max_word_len = 0;
+        let mut line = Vec::new();
+        let mut lines = Vec::new();
+        let (terminal_width, terminal_height) = terminal_size()?;
+        // 控制台40%宽
+        let max_width = terminal_width * 2 / 5;
+        const MAX_WORDS_PER_LINE: usize = 10;
+
+        for word in words {
+            // +1 是因为行尾有一个额外的空格
+            max_word_len = std::cmp::max(max_word_len, word.len() + 1);
+            let new_len = current_len + word.len() as u16 + 1;
+            // 行字长小于总宽40%，并且下一次增加的单词不超过总宽40%。那么才追加单词到当前行
+            if line.len() < MAX_WORDS_PER_LINE && new_len <= max_width {
+                line.push(word.clone());
+                current_len += word.len() as u16 + 1
+            } else {
+                // 在每行的末尾添加一个额外的空格，因为用户会本能地在每个单词后面键入一个空格(至少我是这样做的)
+                // 追加一行
+                lines.push(Text::from(line.join(" ") + " ").with_faint());
+
+                // 新行的第一个单词
+                line = vec![word.clone()];
+                current_len = word.len() as u16 + 1;
+            }
+        }
+
+        lines.push(Text::from(line.join(" ")).with_faint());
+        max_word_len = std::cmp::max(max_word_len + 1, MIN_LINE_WIDTH);
+        if lines.len() + self.bottom_lines_len + 2 > terminal_height as usize {
+            return Err(TypeingError::from(format!(
+                "终端高度太短! Typeing 至少需要 {} 行，得到 {} 行",
+                lines.len() + self.bottom_lines_len + 2,
+                terminal_height
+            )));
+        } else if max_word_len > terminal_width as usize {
+            return Err(TypeingError::from(format!(
+                "终端宽度太低! Typeing 至少需要 {} 列，得到 {} 列",
+                max_word_len,
+                terminal_width
+            )));
+        }
+        self.track_lines = true;
+        self.display_lines(lines.iter().cloned().map(|line| [line]).collect::<Vec<[Text; 1]>>().as_slice())?;
+        self.track_lines = false;
+        self.move_to_cur_pos()?;
+        self.flush()?;
+
+        Ok(lines)
     }
 }
