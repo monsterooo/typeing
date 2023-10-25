@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 bisection = "0.1.0"
 clap = { version = "4.4.6", features = ["derive"] }
+include-flate = "0.3.0"
 rand = "0.8.5"
 termion = "2.0.1"
