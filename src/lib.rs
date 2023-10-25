@@ -2,15 +2,17 @@ use config::TypeingConfig;
 
 pub mod config;
 pub mod tui;
+pub mod textgen;
 
 use tui::{Text, TypeingTui};
+use textgen::{RawWordSelector, WordSelector};
 
 /// 输入测试终端UI和逻辑
 pub struct Typeing {
   tui: TypeingTui,
   text: Vec<Text>,
   words: Vec<String>,
-  word_selector: Box<dyn WordSelection>,
+  word_selector: Box<dyn WordSelector>,
   config: TypeingConfig,
 }
 

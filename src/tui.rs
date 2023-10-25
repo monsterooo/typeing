@@ -66,7 +66,7 @@ impl Text {
     }
 
     /// 为文本添加模糊样式
-    pub fn with_faint(&mut self) -> Self {
+    pub fn with_faint(mut self) -> Self {
         self.raw_text = format!("{}{}{}", style::Faint, self.raw_text, style::NoFaint);
         self
     }
@@ -92,9 +92,21 @@ impl Text {
     }
 }
 
+impl HasLength for Text {
+    fn length(&self) -> usize {
+        self.length
+    }
+}
+
 impl HasLength for [Text] {
     fn length(&self) -> usize {
         self.iter().map(|t| t.length()).sum()
+    }
+}
+
+impl From<String> for Text {
+    fn from(value: String) -> Self {
+        Self::new(value)
     }
 }
 
@@ -355,16 +367,99 @@ impl TypeingTui {
         } else if max_word_len > terminal_width as usize {
             return Err(TypeingError::from(format!(
                 "终端宽度太低! Typeing 至少需要 {} 列，得到 {} 列",
-                max_word_len,
-                terminal_width
+                max_word_len, terminal_width
             )));
         }
         self.track_lines = true;
-        self.display_lines(lines.iter().cloned().map(|line| [line]).collect::<Vec<[Text; 1]>>().as_slice())?;
+        self.display_lines(
+            lines
+                .iter()
+                .cloned()
+                .map(|line| [line])
+                .collect::<Vec<[Text; 1]>>()
+                .as_slice(),
+        )?;
         self.track_lines = false;
         self.move_to_cur_pos()?;
         self.flush()?;
 
         Ok(lines)
+    }
+
+    /// 显示一个原始文本
+    pub fn display_raw_text<T>(&mut self, text: &T) -> MaybeError
+    where
+        T: Display,
+    {
+        write!(self.stdout, "{}", text)?;
+
+        Ok(())
+    }
+
+    /// 隐藏光标
+    pub fn hide_cursor(&mut self) -> MaybeError {
+        write!(self.stdout, "{}", cursor::Hide)?;
+        self.flush()?;
+        Ok(())
+    }
+
+    /// 显示光标
+    pub fn show_cursor(&mut self) -> MaybeError {
+        write!(self.stdout, "{}", cursor::Show)?;
+        self.flush()?;
+        Ok(())
+    }
+
+    /// 将光标前面的文本替换为给定文本
+    pub fn replace_text<T>(&mut self, text: T) -> MaybeError
+    where
+        T: Display,
+    {
+        self.move_to_prev_char()?;
+        self.display_raw_text(&text)?;
+        self.move_to_cur_pos()?;
+
+        Ok(())
+    }
+
+    pub fn move_to_next_char(&mut self) -> MaybeError {
+        let (x, y) = self.cursor_pos.next();
+        write!(self.stdout, "{}", cursor::Goto(x, y));
+
+        Ok(())
+    }
+
+    pub fn move_to_prev_char(&mut self) -> MaybeError {
+        let (x, y) = self.cursor_pos.prev();
+        write!(self.stdout, "{}", cursor::Goto(x, y));
+
+        Ok(())
+    }
+
+    pub fn move_to_cur_pos(&mut self) -> MaybeError {
+        let (x, y) = self.cursor_pos.cur_pos();
+        write!(self.stdout, "{}", cursor::Goto(x, y));
+
+        Ok(())
+    }
+
+    pub fn current_line(&self) -> usize {
+        self.cursor_pos.cur_line
+    }
+}
+
+impl Default for TypeingTui {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for TypeingTui {
+    /// 重置终端
+    /// 清空终端，将光标设置为不闪烁的块
+    fn drop(&mut self) {
+        write!(self.stdout, "{}{}{}", clear::All, cursor::SteadyBlock, cursor::Goto(1,1))
+            .expect("Could not reset terminal while exiting");
+        self.flush().expect("Could not flush stdout while exiting");
     }
 }
